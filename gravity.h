@@ -8,6 +8,11 @@
 #define WINDOW_HEIGHT 720
 #define MAX_BODIES 16
 #define TRAIL_LENGTH 2000
+#define SIM_SECONDS_PER_REAL_SECOND 86400.0
+#define TIME_SCALE_MIN 0.125
+#define TIME_SCALE_MAX 30.0
+#define TIME_SCALE_DEFAULT 1.0
+#define TIME_SCALE_STEP_FACTOR 1.25
 
 extern const double G;
 extern const double FIXED_DT;
@@ -111,5 +116,10 @@ typedef struct {
     Vec2 center;
     double meters_per_pixel;
 } Camera;
+
+typedef struct {
+    int width;
+    int height;
+} Viewport;
 
 #endif

@@ -11,7 +11,7 @@ typedef struct {
     BodyType spawn_type;
     double spawn_mass;
     double simulated_time_seconds;
-    int time_scale_index;
+    double time_scale;
     bool paused;
 } SaveState;
 

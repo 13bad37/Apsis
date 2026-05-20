@@ -3,10 +3,10 @@ CC = gcc
 CFLAGS = -std=c11 -Wall -Wextra -pedantic $(shell pkg-config --cflags sdl2 SDL2_ttf)
 LDFLAGS = $(shell pkg-config --libs sdl2 SDL2_ttf) -lm
 
-TARGET = gravity_sim
+TARGET = apsis
 
-SRC = main.c simulation.c scenes.c render.c state_io.c
-OBJ = main.o simulation.o scenes.o render.o state_io.o
+SRC = main.c simulation.c scenes.c render.c state_io.c benchmark_io.c
+OBJ = main.o simulation.o scenes.o render.o state_io.o benchmark_io.o
 
 all: $(TARGET)
 

@@ -3,5 +3,9 @@ Theory notes/.obsidian/
 
 # Local build outputs
 *.o
+apsis
+apsis_save.txt
+apsis_benchmark.csv
 gravity_sim
 gravitysim_save.txt
+gravitysim_benchmark.csv

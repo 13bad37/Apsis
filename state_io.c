@@ -18,6 +18,21 @@ static bool valid_body_type(BodyType type) {
     return type >= BODY_TYPE_ROCKY && type < BODY_TYPE_COUNT;
 }
 
+static double legacy_time_scale_from_index(int index) {
+    static const double legacy_time_scales[] = {0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0};
+    int count = (int)(sizeof(legacy_time_scales) / sizeof(legacy_time_scales[0]));
+
+    if (index < 0) {
+        return legacy_time_scales[0];
+    }
+
+    if (index >= count) {
+        return legacy_time_scales[count - 1];
+    }
+
+    return legacy_time_scales[index];
+}
+
 bool save_state_to_file(const char *path, const SaveState *state) {
     FILE *file;
 
@@ -32,11 +47,11 @@ bool save_state_to_file(const char *path, const SaveState *state) {
 
     // Plain text keeps the format easy to inspect and change while the
     // project is still evolving.
-    fprintf(file, "GRAVITYSIM_SAVE_V1\n");
+    fprintf(file, "APSIS_SAVE_V1\n");
     fprintf(file, "scene %d\n", (int)state->scene);
     fprintf(file, "integrator %d\n", (int)state->integrator);
     fprintf(file, "simulated_time_seconds %.17g\n", state->simulated_time_seconds);
-    fprintf(file, "time_scale_index %d\n", state->time_scale_index);
+    fprintf(file, "time_scale %.17g\n", state->time_scale);
     fprintf(file, "paused %d\n", state->paused ? 1 : 0);
     fprintf(
         file,
@@ -81,6 +96,7 @@ bool load_state_from_file(const char *path, SaveState *state) {
     int paused_value;
     int spawn_type_value;
     int body_count;
+    bool legacy_v1;
 
     if (path == NULL || state == NULL) {
         return false;
@@ -91,15 +107,37 @@ bool load_state_from_file(const char *path, SaveState *state) {
         return false;
     }
 
-    if (fscanf(file, "%63s", header) != 1 || strcmp(header, "GRAVITYSIM_SAVE_V1") != 0) {
+    if (fscanf(file, "%63s", header) != 1) {
+        fclose(file);
+        return false;
+    }
+
+    legacy_v1 = (strcmp(header, "GRAVITYSIM_SAVE_V1") == 0);
+    if (!legacy_v1 &&
+        strcmp(header, "GRAVITYSIM_SAVE_V2") != 0 &&
+        strcmp(header, "APSIS_SAVE_V1") != 0) {
         fclose(file);
         return false;
     }
 
     if (fscanf(file, " scene %d", &scene_value) != 1 ||
         fscanf(file, " integrator %d", &integrator_value) != 1 ||
-        fscanf(file, " simulated_time_seconds %lf", &state->simulated_time_seconds) != 1 ||
-        fscanf(file, " time_scale_index %d", &state->time_scale_index) != 1 ||
+        fscanf(file, " simulated_time_seconds %lf", &state->simulated_time_seconds) != 1) {
+        fclose(file);
+        return false;
+    }
+
+    if (legacy_v1) {
+        int time_scale_index;
+
+        if (fscanf(file, " time_scale_index %d", &time_scale_index) != 1) {
+            fclose(file);
+            return false;
+        }
+
+        state->time_scale = legacy_time_scale_from_index(time_scale_index);
+    } else if (
+        fscanf(file, " time_scale %lf", &state->time_scale) != 1 ||
         fscanf(file, " paused %d", &paused_value) != 1 ||
         fscanf(
             file,
@@ -114,6 +152,22 @@ bool load_state_from_file(const char *path, SaveState *state) {
         return false;
     }
 
+    if (legacy_v1) {
+        if (fscanf(file, " paused %d", &paused_value) != 1 ||
+            fscanf(
+                file,
+                " camera %lf %lf %lf",
+                &state->camera.center.x,
+                &state->camera.center.y,
+                &state->camera.meters_per_pixel
+            ) != 3 ||
+            fscanf(file, " spawn %d %lf", &spawn_type_value, &state->spawn_mass) != 2 ||
+            fscanf(file, " body_count %d", &body_count) != 1) {
+            fclose(file);
+            return false;
+        }
+    }
+
     state->scene = (ScenePreset)scene_value;
     state->integrator = (IntegratorMode)integrator_value;
     state->spawn_type = (BodyType)spawn_type_value;
@@ -124,6 +178,8 @@ bool load_state_from_file(const char *path, SaveState *state) {
         !valid_body_type(state->spawn_type) ||
         state->spawn_mass < body_type_min_mass(state->spawn_type) ||
         state->spawn_mass > body_type_max_mass(state->spawn_type) ||
+        state->time_scale < TIME_SCALE_MIN ||
+        state->time_scale > TIME_SCALE_MAX ||
         state->camera.meters_per_pixel <= 0.0 ||
         body_count < 0 ||
         body_count > MAX_BODIES) {

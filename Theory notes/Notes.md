@@ -1,6 +1,6 @@
-# GravitySim Theory Notes
+# Apsis Theory Notes
 
-I wrote these notes alognside the project. The idea was to keep the reasoning clear enough that the code and physics stay connected. It also acted as my notes as I did the research on the math to complete this project.
+I wrote these notes alognside Apsis. The idea was to keep the reasoning clear enough that the code and physics stay connected. It also acted as my notes as I did the research on the math to complete this project.
 
 ## First implementation
 
@@ -336,3 +336,24 @@ The file format is plain text on purpose. It would be easy to move to something 
 There is also a small validation pass on load. That's there so obviously broken files don't get treated like good physics input by accident. If the body count is invalid, the body types don't make sense, or key values are out of range, the load fails instead of quietly importing nonsense.
 
 One small but important detail is the drift baseline. I don't save and restore that directly. After a load, the current state becomes the new reference point and the baseline gets rebuilt from it. That keeps the drift numbers meaningful instead of mixing an old comparison state into a new session.
+
+## Data export and benchmarking
+
+Once the sim had multiple integrators, drift tracking, and save/load, it felt pointless to keep judging everything by eye alone. At that point I had enough structure in place that I could start exporting actual measurements instead of just saying one version "felt more stable" than another.
+
+The key decision here was to export data on the fixed simulation step, not on the render frame. That matters because rendering frequency isn't physics. The fixed timestep is the actual simulation clock, so benchmarking against frames would have mixed the numerical results with whatever the windowing and rendering side happened to be doing.
+
+So the benchmark export writes rows against simulated time, using the same diagnostic quantities the HUD already shows:
+
+- total energy
+- total momentum
+- angular momentum
+- energy drift
+- momentum drift
+- angular momentum drift
+
+The exported file also records which scene and which integrator produced each row. That means I can do things like load one saved state, run it with velocity Verlet, export the CSV, then reload the same state and do the same run with RK4 or semi implicit Euler. That gives me a proper comparison instead of a vague impression.
+
+The format is plain CSV because the first job here isn't to be fancy, it's to be useful. I want to be able to open it quickly, graph it easily, and inspect it without having to write another parser first.
+
+One small but important detail is that the recorder writes on every completed fixed step. That's what makes the output line up with the real numerical evolution of the system instead of the display loop.
