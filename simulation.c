@@ -22,6 +22,11 @@ const double SOLAR_MASS = 1.98847e30;
 const double SOLAR_RADIUS = 6.9634e8;
 const double AU = 1.495978707e11;
 
+static const double COLLISION_MERGE_ESCAPE_FACTOR = 1.20;
+static const double COLLISION_RESTITUTION = 0.30;
+static const double COLLISION_DAMAGE_TRANSFER_MAX = 0.18;
+static const double COLLISION_SEPARATION_EPSILON = 1.0;
+
 Vec2 vec2(double x, double y) {
     Vec2 value = {x, y};
     return value;
@@ -45,6 +50,20 @@ static double vec_length_sq(Vec2 v) {
 
 static double vec_length(Vec2 v) {
     return sqrt(vec_length_sq(v));
+}
+
+static double vec_dot(Vec2 a, Vec2 b) {
+    return (a.x * b.x) + (a.y * b.y);
+}
+
+static Vec2 vec_normalize(Vec2 value) {
+    double length = vec_length(value);
+
+    if (length <= 0.0) {
+        return vec2(1.0, 0.0);
+    }
+
+    return vec_scale(value, 1.0 / length);
 }
 
 static double clamp_double(double value, double min_value, double max_value) {
@@ -404,20 +423,174 @@ static void merge_body_pair(Simulation *sim, int index_a, int index_b) {
     sim->body_count--;
 }
 
-static void resolve_collisions(Simulation *sim) {
-    bool merged_any = true;
+static double mutual_escape_speed(const Body *a, const Body *b) {
+    double contact_distance = a->radius + b->radius;
 
-    while (merged_any) {
-        merged_any = false;
+    if (contact_distance <= 0.0) {
+        return 0.0;
+    }
+
+    return sqrt((2.0 * G * (a->mass + b->mass)) / contact_distance);
+}
+
+static double collision_damage_fraction(double relative_speed, double escape_speed) {
+    double impact_ratio;
+    double excess_ratio;
+
+    if (escape_speed <= 0.0) {
+        return 0.0;
+    }
+
+    impact_ratio = relative_speed / escape_speed;
+    excess_ratio = clamp_double(
+        (impact_ratio - COLLISION_MERGE_ESCAPE_FACTOR) / (3.0 - COLLISION_MERGE_ESCAPE_FACTOR),
+        0.0,
+        1.0
+    );
+
+    return 0.02 + (COLLISION_DAMAGE_TRANSFER_MAX - 0.02) * excess_ratio;
+}
+
+static Vec2 collision_normal(const Body *a, const Body *b) {
+    Vec2 delta = vec_sub(b->position, a->position);
+    double distance_sq = vec_length_sq(delta);
+
+    if (distance_sq > 0.0) {
+        return vec_normalize(delta);
+    }
+
+    delta = vec_sub(b->velocity, a->velocity);
+    if (vec_length_sq(delta) > 0.0) {
+        return vec_normalize(delta);
+    }
+
+    return vec2(1.0, 0.0);
+}
+
+static void separate_overlapping_bodies(Body *a, Body *b, Vec2 normal) {
+    double current_distance = vec_length(vec_sub(b->position, a->position));
+    double target_distance = a->radius + b->radius + COLLISION_SEPARATION_EPSILON;
+    double overlap = target_distance - current_distance;
+    double total_mass = a->mass + b->mass;
+    double move_a;
+    double move_b;
+
+    if (overlap <= 0.0 || total_mass <= 0.0) {
+        return;
+    }
+
+    move_a = overlap * (b->mass / total_mass);
+    move_b = overlap * (a->mass / total_mass);
+
+    a->position = vec_sub(a->position, vec_scale(normal, move_a));
+    b->position = vec_add(b->position, vec_scale(normal, move_b));
+}
+
+static void resolve_high_speed_collision(Body *a, Body *b) {
+    Vec2 normal = collision_normal(a, b);
+    Vec2 tangent = vec2(-normal.y, normal.x);
+    Vec2 relative_velocity = vec_sub(b->velocity, a->velocity);
+    double relative_speed = vec_length(relative_velocity);
+    double escape_speed = mutual_escape_speed(a, b);
+    double total_angular_momentum_before =
+        orbital_angular_momentum_z(a) + a->spin_angular_momentum +
+        orbital_angular_momentum_z(b) + b->spin_angular_momentum;
+    double mass_a = a->mass;
+    double mass_b = b->mass;
+    double velocity_a_normal = vec_dot(a->velocity, normal);
+    double velocity_b_normal = vec_dot(b->velocity, normal);
+    double velocity_a_tangent = vec_dot(a->velocity, tangent);
+    double velocity_b_tangent = vec_dot(b->velocity, tangent);
+    double velocity_a_normal_after;
+    double velocity_b_normal_after;
+    Body *receiver;
+    Body *donor;
+    double transfer_mass;
+    double orbital_angular_momentum_after;
+    double combined_inertia;
+    double target_spin_total;
+
+    velocity_a_normal_after =
+        ((mass_a - (COLLISION_RESTITUTION * mass_b)) * velocity_a_normal +
+         ((1.0 + COLLISION_RESTITUTION) * mass_b * velocity_b_normal)) /
+        (mass_a + mass_b);
+    velocity_b_normal_after =
+        ((mass_b - (COLLISION_RESTITUTION * mass_a)) * velocity_b_normal +
+         ((1.0 + COLLISION_RESTITUTION) * mass_a * velocity_a_normal)) /
+        (mass_a + mass_b);
+
+    a->velocity = vec_add(vec_scale(normal, velocity_a_normal_after),
+                          vec_scale(tangent, velocity_a_tangent));
+    b->velocity = vec_add(vec_scale(normal, velocity_b_normal_after),
+                          vec_scale(tangent, velocity_b_tangent));
+
+    // First pass damage model: the heavier body captures a small fraction
+    // of the lighter body when the impact is too energetic to merge cleanly.
+    if (a->mass >= b->mass) {
+        receiver = a;
+        donor = b;
+    } else {
+        receiver = b;
+        donor = a;
+    }
+
+    transfer_mass = collision_damage_fraction(relative_speed, escape_speed) * donor->mass;
+    if (transfer_mass > 0.0 && transfer_mass < donor->mass) {
+        receiver->velocity = vec_scale(
+            vec_add(
+                vec_scale(receiver->velocity, receiver->mass),
+                vec_scale(donor->velocity, transfer_mass)
+            ),
+            1.0 / (receiver->mass + transfer_mass)
+        );
+
+        donor->mass -= transfer_mass;
+        receiver->mass += transfer_mass;
+        donor->radius = radius_from_mass_density(donor->mass, donor->density);
+        receiver->radius = radius_from_mass_density(receiver->mass, receiver->density);
+    }
+
+    separate_overlapping_bodies(a, b, normal);
+
+    orbital_angular_momentum_after = orbital_angular_momentum_z(a) + orbital_angular_momentum_z(b);
+    target_spin_total = total_angular_momentum_before - orbital_angular_momentum_after;
+    combined_inertia = moment_of_inertia(a) + moment_of_inertia(b);
+
+    if (combined_inertia > 0.0) {
+        a->spin_angular_momentum = target_spin_total * (moment_of_inertia(a) / combined_inertia);
+        b->spin_angular_momentum = target_spin_total - a->spin_angular_momentum;
+    } else {
+        a->spin_angular_momentum = 0.0;
+        b->spin_angular_momentum = 0.0;
+    }
+}
+
+static void resolve_collisions(Simulation *sim) {
+    bool resolved_any = true;
+
+    while (resolved_any) {
+        resolved_any = false;
 
         for (int i = 0; i < sim->body_count; i++) {
             for (int j = i + 1; j < sim->body_count; j++) {
+                Body *a = &sim->bodies[i];
+                Body *b = &sim->bodies[j];
                 Vec2 delta = vec_sub(sim->bodies[j].position, sim->bodies[i].position);
                 double collision_distance = sim->bodies[i].radius + sim->bodies[j].radius;
+                double relative_speed;
+                double escape_speed;
 
                 if (vec_length_sq(delta) <= collision_distance * collision_distance) {
-                    merge_body_pair(sim, i, j);
-                    merged_any = true;
+                    relative_speed = vec_length(vec_sub(b->velocity, a->velocity));
+                    escape_speed = mutual_escape_speed(a, b);
+
+                    if (relative_speed <= COLLISION_MERGE_ESCAPE_FACTOR * escape_speed) {
+                        merge_body_pair(sim, i, j);
+                    } else {
+                        resolve_high_speed_collision(a, b);
+                    }
+
+                    resolved_any = true;
                     goto collision_pass_complete;
                 }
             }

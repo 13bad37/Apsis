@@ -238,7 +238,7 @@ This keeps the centre of mass from sliding across the screen for no reason.
 
 ## Collision system
 
-The collision system currently models a perfectly inelastic collision, so two bodies merge instead of bouncing. This is an okay firs model since large scale impacts iompacts lose energy to heat, deformation and internal motion.
+The first collision model was deliberately simple. If two bodies overlapped, they merged. That was a reasonable starting point since large scale impacts do lose energy to heat, deformation and internal motion, but it also meant every collision looked like perfect sticking no matter how violent it was.
 
 A collision is detected when the distance between two body centres is less than or equal to their combined physical radii:
 
@@ -248,7 +248,7 @@ $$
 
 This uses the real physics radius, not the inflated visual radius used for rendering. That is why two bodies can sometimes look like they overlap on screen even though they haven't physically collided yet.
 
-When two bodies merge:
+For the low speed branch, bodies still merge:
 
 - mass is conserved: $M = m_1 + m_2$
 - the new position is the centre of mass:
@@ -283,6 +283,35 @@ L_z = m(xv_y - yv_x)
 $$
 
 When bodies merge off centre, some orbital angular momentum becomes spin on the merged body. I haven't implemented any rendering for spin yet, but keeping track of it makes the angular momentum diagnositc more useful.
+
+## Extended collision model
+
+Once the sim had body types, save/load, diagnostics, and benchmarking, it stopped making sense to keep the collision outcome stuck at "always merge". I wanted a first extension that was still controlled, still stable, and noticeably more physical without jumping straight to fragmentation.
+
+The split I went with was:
+
+- low speed accretion
+- high speed survival
+
+The dividing line uses the mutual escape speed of the pair:
+
+$$
+v_{\text{esc}} = \sqrt{\frac{2G(m_1 + m_2)}{r_1 + r_2}}
+$$
+
+That gives a decent first pass for whether the impact should stay bound or not. If the relative speed is low enough compared to that scale, the bodies merge like before. If it comes in well above that threshold, the collision gets treated as a hit-and-run style impact instead.
+
+For the high speed branch, I didn't want to go straight to full fragmentation because that gets messy quickly with the current body limit. So the first extension is a bounce plus damage model.
+
+The bounce happens along the collision normal with an inelastic restitution. That means the bodies don't come off the impact with all of their original normal-direction kinetic energy, which is a much better fit than a perfectly elastic rebound. Tangential motion is left alone in this first pass.
+
+Then there is a small damage and accretion step. The heavier body captures a fraction of the lighter body's mass, with the amount scaled by how far above the merge threshold the impact was. That keeps total mass conserved while still making harder collisions behave differently from gentle ones.
+
+There is also an overlap separation pass after the impact. That part is mostly numerical hygiene. If the bodies are left interpenetrating, the next collision pass can just detect the same overlap again immediately.
+
+Angular momentum bookkeeping still stays in the loop. After the bounce and mass transfer, the sim compares the old total angular momentum to the new orbital angular momentum and pushes the remainder into spin. That keeps the impact model more coherent than just bouncing positions and velocities around while ignoring the rotational side completely.
+
+It is still an approximation, not a full material impact solver. There is no fragmentation cloud, no shock heating model, and no material specific failure. But it is already a much better approximation than "every overlap becomes one object", and it gives the sim a more useful collision model to build on later.
 
 ## Drift system
 

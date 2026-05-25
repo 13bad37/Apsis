@@ -8,33 +8,39 @@
 
 <p align="center">
   <img alt="Status active development" src="https://img.shields.io/badge/Status-Active%20Development-1f6feb?style=for-the-badge" />
-  <img alt="Roadmap progress" src="https://img.shields.io/badge/Roadmap-22%2F26%20complete-2ea44f?style=for-the-badge" height="28" />
+  <img alt="Roadmap progress" src="https://img.shields.io/badge/Roadmap-23%2F26%20complete-2ea44f?style=for-the-badge" height="28" />
 </p>
 
 Apsis is a real time 2D gravity simulation written in C with SDL2. It started as a fun curiosity project, but the direction changed pretty quickly. The goal now is to keep the interaction side enjoyable while pushing the simulation itself toward more defensible physics and better numerical behaviour.
 
-The current build already supports physically meaningful units, multiple integrators, preset scenes, interactive spawning, collision merging, save/load state handling, CSV benchmark export, camera controls, and live diagnostics for energy, momentum, angular momentum, and drift. It is still actively being built out, but the foundation is in place and the roadmap is clear.
+The current build already supports physically meaningful units, multiple integrators, preset scenes, interactive spawning, extended collision handling, save/load state handling, CSV benchmark export, camera controls, and live diagnostics for energy, momentum, angular momentum, and drift. It is still actively being built out, but the foundation is in place and the roadmap is clear.
 
 ## Preview
 
 ### Default View
 
 <p align="center">
-  <img src="assets/media/gravitysim-starter.png" alt="Apsis default starter scene with the HUD visible" width="92%" />
+  <img src="assets/media/apsis-default-view.png" alt="Apsis default starter scene with the HUD visible" width="92%" />
 </p>
 
 ### Scene Clips
 
 <table align="center">
   <tr>
-    <th width="33%">Starter Scene</th>
-    <th width="33%">Chaotic Three-Body</th>
-    <th width="33%">Binary Stars</th>
+    <th width="50%">Starter Scene</th>
+    <th width="50%">Chaotic Three-Body</th>
   </tr>
   <tr>
-    <td align="center"><img src="assets/media/starter-orbit.gif" alt="Starter scene GIF" width="100%" /></td>
-    <td align="center"><img src="assets/media/chaotic-three-body.gif" alt="Chaotic three-body scene GIF" width="100%" /></td>
-    <td align="center"><img src="assets/media/binary-stars.gif" alt="Binary stars scene GIF" width="100%" /></td>
+    <td align="center"><img src="assets/media/apsis-starter-scene.gif" alt="Starter scene GIF" width="100%" /></td>
+    <td align="center"><img src="assets/media/apsis-chaotic-three-body.gif" alt="Chaotic three-body scene GIF" width="100%" /></td>
+  </tr>
+  <tr>
+    <th width="50%">Binary Stars</th>
+    <th width="50%">Gas Giant + Moon</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/media/apsis-binary-stars.gif" alt="Binary stars scene GIF" width="100%" /></td>
+    <td align="center"><img src="assets/media/apsis-gas-giant-moon.gif" alt="Gas giant and moon scene GIF" width="100%" /></td>
   </tr>
 </table>
 
@@ -46,7 +52,7 @@ The current build already supports physically meaningful units, multiple integra
 - Runtime integrator comparison with Euler, velocity Verlet, and RK4
 - Interactive body spawning with drag based launch velocity
 - Preset scenes for empty space, a solar baseline, three body motion, binary stars, and a gas giant + moon system
-- Perfectly inelastic collision merging with mass, momentum, and density aware radius updates
+- Extended collision handling with accretion merges, high-speed bounce outcomes, and density aware radius updates
 - Save and load support for reproducible simulation states
 - CSV benchmark export for integrator, energy, momentum, angular momentum, and drift tracking
 - Diagnostics for total energy, total momentum, angular momentum, and relative drift from a resettable baseline
@@ -61,7 +67,7 @@ $$
 
 The simulation currently supports semi implicit Euler, velocity Verlet, and RK4. Velocity Verlet is still the default because it is a much better fit for orbital systems than a simple Euler step, while still staying light enough for real time use.
 
-Collisions are handled as perfectly inelastic merges. Mass and linear momentum are conserved, merged radius is recomputed from mass and density, and off-centre impacts keep angular momentum bookkeeping through a stored spin term.
+Collisions now split into two broad outcomes. Lower speed impacts still merge, while higher speed impacts bounce, transfer some mass, and keep overlap separation plus spin bookkeeping so the result is more physically expressive than simple always-merge behaviour.
 
 There is also a drift system in the HUD. Implemented during debugging but kept it since I felt if I was asking myself: “does this look right?”, other people might too. It measures how far the current state has numerically moved away from a chosen baseline, which makes it easier to judge integrator quality and general simulation health.
 
@@ -142,10 +148,10 @@ The badge above is generated automatically from this checklist by a GitHub Actio
 - [x] More physically defined preset scenes
 - [x] Save and load simulation states
 - [x] Data export and benchmarking tools
+- [x] Collision model extensions beyond simple merging
 
 ### Planned
 
 - [ ] Barnes-Hut approximation for larger body counts
-- [ ] Collision model extensions beyond simple merging
 - [ ] Black hole / extreme gravity experiment mode
 - [ ] General polish for public releases

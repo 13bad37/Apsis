@@ -242,6 +242,42 @@ static double initial_time_scale_from_env(double fallback) {
     return clamp_time_scale(requested);
 }
 
+static double initial_camera_scale_from_env(double fallback) {
+    const char *value = getenv("GRAVITYSIM_START_METERS_PER_PIXEL");
+    char *end = NULL;
+    double requested;
+
+    if (value == NULL || value[0] == '\0') {
+        return fallback;
+    }
+
+    requested = strtod(value, &end);
+
+    if (end == value) {
+        return fallback;
+    }
+
+    return clamp_double(requested, CAMERA_MIN_METERS_PER_PIXEL, CAMERA_MAX_METERS_PER_PIXEL);
+}
+
+static double initial_camera_center_axis_from_env(const char *name, double fallback) {
+    const char *value = getenv(name);
+    char *end = NULL;
+    double requested;
+
+    if (value == NULL || value[0] == '\0') {
+        return fallback;
+    }
+
+    requested = strtod(value, &end);
+
+    if (end == value) {
+        return fallback;
+    }
+
+    return requested;
+}
+
 static bool initial_hud_visibility_from_env(bool fallback) {
     const char *value = getenv("GRAVITYSIM_HIDE_HUD");
 
@@ -319,6 +355,9 @@ int main(void) {
 
     activate_scene(current_scene, &initial_state, &sim, &spawn, &accumulator, &simulated_time_seconds);
     reset_camera(&camera);
+    camera.meters_per_pixel = initial_camera_scale_from_env(camera.meters_per_pixel);
+    camera.center.x = initial_camera_center_axis_from_env("GRAVITYSIM_START_CAMERA_X", camera.center.x);
+    camera.center.y = initial_camera_center_axis_from_env("GRAVITYSIM_START_CAMERA_Y", camera.center.y);
     diagnostics_baseline = make_diagnostics_baseline(&sim);
     refresh_viewport(window, &viewport);
 
