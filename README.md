@@ -16,9 +16,9 @@ Apsis is a real time 2D gravity simulation written in C with SDL2. It started as
 The current build already supports physically meaningful units, multiple integrators, preset scenes, interactive spawning, extended collision handling, save/load state handling, CSV benchmark export, camera controls, and live diagnostics for energy, momentum, angular momentum, and drift. It is still actively being built out, but the foundation is in place and the roadmap is clear.
 
 <p align="center">
-  <a href="https://13bad37.github.io/Gravity-Simulation/"><strong>Launch the Live Web Demo</strong></a>
-  &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#build"><strong>Build the Native Version</strong></a>
+  <a href="https://13bad37.github.io/Apsis/">
+    <img alt="Live Demo" src="https://img.shields.io/badge/Live%20Demo-Launch%20Apsis-d39a36?style=for-the-badge&logo=githubpages&logoColor=white" />
+  </a>
 </p>
 
 ## Preview
@@ -101,7 +101,7 @@ make run
 
 The browser version compiles the same C/SDL2 simulation core to WebAssembly with Emscripten. The hosted demo is available at:
 
-[https://13bad37.github.io/Gravity-Simulation/](https://13bad37.github.io/Gravity-Simulation/)
+[https://13bad37.github.io/Apsis/](https://13bad37.github.io/Apsis/)
 
 To build the web version locally from an activated Emscripten SDK environment:
 
