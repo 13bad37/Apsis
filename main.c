@@ -11,12 +11,102 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+static void browser_display_clock(void) {
+    // SDL's browser renderer expects a registered display loop for timing.
+    // The simulation itself continues in the yielded desktop-style loop below.
+}
+#endif
+
 static const double CAMERA_ZOOM_FACTOR = 1.25;
 static const double CAMERA_MIN_METERS_PER_PIXEL = 1.0e5;
 static const double CAMERA_MAX_METERS_PER_PIXEL = 5.0e10;
 static const double CAMERA_KEY_PAN_PIXELS = 80.0;
 static const char *BENCHMARK_EXPORT_PATH = "apsis_benchmark.csv";
 static const char *SAVE_STATE_PATH = "apsis_save.txt";
+
+#ifdef __EMSCRIPTEN__
+static void browser_notify(const char *message, bool is_error) {
+    EM_ASM({
+        if (Module.apsisNotify) {
+            Module.apsisNotify(UTF8ToString($0), $1 ? "error" : "success");
+        }
+    }, message, is_error ? 1 : 0);
+}
+
+static void persist_browser_save(void) {
+    EM_ASM({
+        try {
+            const path = UTF8ToString($0);
+            const state = FS.readFile(path, { encoding: "utf8" });
+            localStorage.setItem("apsis.save.v1", state);
+            if (Module.apsisNotify) {
+                Module.apsisNotify("Session saved in this browser", "success");
+            }
+        } catch (error) {
+            if (Module.apsisNotify) {
+                Module.apsisNotify("Couldn't save this session", "error");
+            }
+        }
+    }, SAVE_STATE_PATH);
+}
+
+static bool restore_browser_save(void) {
+    return EM_ASM_INT({
+        try {
+            const state = localStorage.getItem("apsis.save.v1");
+            if (!state) {
+                if (Module.apsisNotify) {
+                    Module.apsisNotify("No saved browser session yet", "error");
+                }
+                return 0;
+            }
+
+            FS.writeFile(UTF8ToString($0), state);
+            return 1;
+        } catch (error) {
+            if (Module.apsisNotify) {
+                Module.apsisNotify("Couldn't restore this session", "error");
+            }
+            return 0;
+        }
+    }, SAVE_STATE_PATH) != 0;
+}
+
+static void download_browser_file(const char *path, const char *download_name) {
+    EM_ASM({
+        try {
+            const contents = FS.readFile(UTF8ToString($0));
+            const blob = new Blob([contents], { type: "text/csv;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = UTF8ToString($1);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            if (Module.apsisNotify) {
+                Module.apsisNotify("Benchmark CSV downloaded", "success");
+            }
+        } catch (error) {
+            if (Module.apsisNotify) {
+                Module.apsisNotify("Couldn't export benchmark CSV", "error");
+            }
+        }
+    }, path, download_name);
+}
+#endif
+
+static void finish_benchmark_recording(BenchmarkRecorder *benchmark) {
+    benchmark_recorder_stop(benchmark);
+
+#ifdef __EMSCRIPTEN__
+    download_browser_file(BENCHMARK_EXPORT_PATH, "apsis_benchmark.csv");
+#endif
+}
 
 static IntegratorMode next_integrator(IntegratorMode integrator) {
     return (IntegratorMode)((integrator + 1) % INTEGRATOR_COUNT);
@@ -120,6 +210,13 @@ static void apply_hud_action(HudAction action, ScenePreset *current_scene,
 
             if (!save_state_to_file(SAVE_STATE_PATH, &save_state)) {
                 fprintf(stderr, "Failed to save state to %s\n", SAVE_STATE_PATH);
+#ifdef __EMSCRIPTEN__
+                browser_notify("Couldn't save this session", true);
+#endif
+            } else {
+#ifdef __EMSCRIPTEN__
+                persist_browser_save();
+#endif
             }
             break;
         }
@@ -127,8 +224,17 @@ static void apply_hud_action(HudAction action, ScenePreset *current_scene,
         case HUD_ACTION_LOAD_STATE: {
             SaveState loaded_state = {0};
 
+#ifdef __EMSCRIPTEN__
+            if (!restore_browser_save()) {
+                break;
+            }
+#endif
+
             if (!load_state_from_file(SAVE_STATE_PATH, &loaded_state)) {
                 fprintf(stderr, "Failed to load state from %s\n", SAVE_STATE_PATH);
+#ifdef __EMSCRIPTEN__
+                browser_notify("Saved session is invalid", true);
+#endif
                 break;
             }
 
@@ -144,12 +250,15 @@ static void apply_hud_action(HudAction action, ScenePreset *current_scene,
             set_spawn_body_type(spawn, loaded_state.spawn_type);
             spawn->mass = loaded_state.spawn_mass;
             *diagnostics_baseline = make_diagnostics_baseline(sim);
+#ifdef __EMSCRIPTEN__
+            browser_notify("Session restored", false);
+#endif
             break;
         }
 
         case HUD_ACTION_TOGGLE_BENCHMARK:
             if (benchmark->active) {
-                benchmark_recorder_stop(benchmark);
+                finish_benchmark_recording(benchmark);
             } else {
                 SimulationDiagnostics benchmark_diagnostics = compute_diagnostics(sim);
                 SimulationDrift benchmark_drift =
@@ -293,6 +402,14 @@ static bool initial_hud_visibility_from_env(bool fallback) {
 }
 
 int main(void) {
+    Uint32 renderer_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
+
+#ifdef __EMSCRIPTEN__
+    // The browser build is a light 2D scene. Canvas rendering avoids WebGL
+    // context-loss failures while keeping ample headroom for this body count.
+    renderer_flags = SDL_RENDERER_SOFTWARE;
+#endif
+
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
@@ -307,10 +424,14 @@ int main(void) {
         SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
     );
 
+#ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop(browser_display_clock, 0, 0);
+#endif
+
     SDL_Renderer *renderer = SDL_CreateRenderer(
         window,
         -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+        renderer_flags
     );
     // Use software rendering if hardware rendering isn't an option
 
@@ -431,7 +552,7 @@ int main(void) {
 
                     case SDLK_F6:
                         if (benchmark.active) {
-                            benchmark_recorder_stop(&benchmark);
+                            finish_benchmark_recording(&benchmark);
                         } else {
                             SimulationDiagnostics benchmark_diagnostics = compute_diagnostics(&sim);
                             SimulationDrift benchmark_drift =
@@ -475,6 +596,13 @@ int main(void) {
 
                         if (!save_state_to_file(SAVE_STATE_PATH, &save_state)) {
                             fprintf(stderr, "Failed to save state to %s\n", SAVE_STATE_PATH);
+#ifdef __EMSCRIPTEN__
+                            browser_notify("Couldn't save this session", true);
+#endif
+                        } else {
+#ifdef __EMSCRIPTEN__
+                            persist_browser_save();
+#endif
                         }
                         break;
                     }
@@ -482,8 +610,17 @@ int main(void) {
                     case SDLK_F9: {
                         SaveState loaded_state = {0};
 
+#ifdef __EMSCRIPTEN__
+                        if (!restore_browser_save()) {
+                            break;
+                        }
+#endif
+
                         if (!load_state_from_file(SAVE_STATE_PATH, &loaded_state)) {
                             fprintf(stderr, "Failed to load state from %s\n", SAVE_STATE_PATH);
+#ifdef __EMSCRIPTEN__
+                            browser_notify("Saved session is invalid", true);
+#endif
                             break;
                         }
 
@@ -501,6 +638,9 @@ int main(void) {
 
                         // A loaded state becomes the new reference point.
                         diagnostics_baseline = make_diagnostics_baseline(&sim);
+#ifdef __EMSCRIPTEN__
+                        browser_notify("Session restored", false);
+#endif
                         break;
                     }
 
@@ -777,6 +917,12 @@ int main(void) {
             hud_visible,
             time_scale
         );
+
+#ifdef __EMSCRIPTEN__
+        // The desktop build owns its blocking loop. Browser builds yield once
+        // each frame so input, painting, and the surrounding page stay live.
+        emscripten_sleep(16);
+#endif
     }
     benchmark_recorder_stop(&benchmark);
     shutdown_render_resources();

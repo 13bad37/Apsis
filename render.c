@@ -142,16 +142,20 @@ static HudLayout get_hud_layout(const Viewport *viewport) {
     int controls_buttons_y;
     int status_rows_start_y;
     int time_row_y;
+    bool compact;
 
     viewport_dimensions(viewport, &viewport_width, &viewport_height);
+    compact = viewport_width < 720;
 
     layout.status_panel.x = 18;
     layout.status_panel.y = 18;
-    layout.status_panel.w = 428;
-    layout.status_panel.h = 28 + title_height + 18 + (14 * body_step) + 36;
+    layout.status_panel.w = compact ? viewport_width - 36 : 428;
+    layout.status_panel.h = compact
+        ? 28 + title_height + 18 + (6 * body_step) + 18
+        : 28 + title_height + 18 + (14 * body_step) + 36;
 
     layout.controls_panel.x = 18;
-    layout.controls_panel.w = 430;
+    layout.controls_panel.w = compact ? viewport_width - 36 : 430;
     layout.controls_panel.h = 28 + title_height + 18 + (2 * button_height) + body_step + 38;
     layout.controls_panel.y = viewport_height - layout.controls_panel.h - 18;
     if (layout.controls_panel.y < 18) {
@@ -160,14 +164,14 @@ static HudLayout get_hud_layout(const Viewport *viewport) {
 
     layout.status_text_x = layout.status_panel.x + 16;
     layout.controls_text_x = layout.controls_panel.x + 16;
-    layout.value_x = layout.status_panel.x + 118;
-    layout.right_column_x = layout.status_panel.x + 220;
+    layout.value_x = layout.status_panel.x + (compact ? 102 : 118);
+    layout.right_column_x = layout.status_panel.x + (compact ? 214 : 220);
 
     status_rows_start_y = layout.status_panel.y + 14 + title_height + 18;
-    time_row_y = status_rows_start_y + (5 * body_step) + 2;
+    time_row_y = status_rows_start_y + ((compact ? 3 : 5) * body_step) + 2;
     layout.time_slider_track.x = layout.value_x;
     layout.time_slider_track.y = time_row_y + 6;
-    layout.time_slider_track.w = 176;
+    layout.time_slider_track.w = compact ? 130 : 176;
     layout.time_slider_track.h = 8;
     layout.time_slider_hit_box.x = layout.time_slider_track.x;
     layout.time_slider_hit_box.y = time_row_y - 3;
@@ -502,6 +506,7 @@ static void draw_hud(SDL_Renderer *renderer, const Simulation *sim, const SpawnS
     double simulated_days = simulated_time_seconds / 86400.0;
     double view_km_per_pixel = camera->meters_per_pixel / 1000.0;
     double momentum_magnitude;
+    bool compact = viewport != NULL && viewport->width < 720;
 
     if (diagnostics == NULL) {
         diagnostics = &zero_diagnostics;
@@ -527,6 +532,41 @@ static void draw_hud(SDL_Renderer *renderer, const Simulation *sim, const SpawnS
               layout.status_panel.w - 32, rule_color);
 
     status_line_y = layout.status_panel.y + 14 + title_height + 18;
+
+    if (compact) {
+        draw_key_value_row(renderer, g_hud_body_font, layout.status_text_x, status_line_y,
+                           layout.value_x, muted_color, text_color, "Scene", scene_name(scene));
+        status_line_y += body_step;
+
+        draw_key_value_row(renderer, g_hud_body_font, layout.status_text_x, status_line_y,
+                           layout.value_x, muted_color, text_color, "Method",
+                           integrator_name(integrator));
+        status_line_y += body_step;
+
+        snprintf(line, sizeof(line), "%d/%d  %s", sim->body_count, MAX_BODIES,
+                 paused ? "paused" : "running");
+        draw_key_value_row(renderer, g_hud_body_font, layout.status_text_x, status_line_y,
+                           layout.value_x, muted_color,
+                           paused ? negative_color : positive_color, "Bodies", line);
+        status_line_y += body_step + 2;
+
+        draw_key_value_row(renderer, g_hud_body_font, layout.status_text_x, status_line_y,
+                           layout.value_x, muted_color, text_color, "Time", " ");
+        draw_time_scale_slider(renderer, &layout.time_slider_track, time_scale);
+        snprintf(line, sizeof(line), "%.2gx", time_scale);
+        draw_text_line(renderer, g_hud_body_font,
+                       layout.time_slider_track.x + layout.time_slider_track.w + 10,
+                       status_line_y, text_color, line);
+        status_line_y += body_step + 8;
+
+        snprintf(line, sizeof(line), "Drift  dE %.1e   dP %.1e   dL %.1e",
+                 drift->energy_relative,
+                 drift->momentum_relative,
+                 drift->angular_momentum_relative);
+        draw_text_line(renderer, g_hud_body_font, layout.status_text_x, status_line_y,
+                       muted_color, line);
+        goto draw_controls;
+    }
 
     draw_key_value_row(renderer, g_hud_body_font, layout.status_text_x, status_line_y, layout.value_x,
                        muted_color, text_color, "Scene", scene_name(scene));
@@ -612,6 +652,7 @@ static void draw_hud(SDL_Renderer *renderer, const Simulation *sim, const SpawnS
     draw_text_line(renderer, g_hud_body_font, layout.status_text_x, status_line_y,
                    muted_color, line);
 
+draw_controls:
     draw_panel(renderer, layout.controls_panel.x, layout.controls_panel.y,
                layout.controls_panel.w, layout.controls_panel.h);
     draw_text_line(renderer, g_hud_title_font, layout.controls_text_x, layout.controls_panel.y + 14,
@@ -634,7 +675,7 @@ static void draw_hud(SDL_Renderer *renderer, const Simulation *sim, const SpawnS
                 point_in_rect(mouse_x, mouse_y, &layout.buttons[HUD_BUTTON_LOAD_STATE]));
     draw_button(renderer, g_hud_body_font, &layout.buttons[HUD_BUTTON_BENCHMARK],
                 benchmark_recording ? negative_color : button_fill, rule_color, text_color,
-                benchmark_recording ? "Bench stop" : "Bench rec",
+                benchmark_recording ? "Stop" : (compact ? "Bench" : "Bench rec"),
                 point_in_rect(mouse_x, mouse_y, &layout.buttons[HUD_BUTTON_BENCHMARK]));
 
     draw_button(renderer, g_hud_body_font, &layout.buttons[HUD_BUTTON_TIME_DOWN],
@@ -644,20 +685,24 @@ static void draw_hud(SDL_Renderer *renderer, const Simulation *sim, const SpawnS
                 button_fill, rule_color, text_color, "Time +",
                 point_in_rect(mouse_x, mouse_y, &layout.buttons[HUD_BUTTON_TIME_UP]));
     draw_button(renderer, g_hud_body_font, &layout.buttons[HUD_BUTTON_INTEGRATOR],
-                button_fill, rule_color, text_color, "Integr.",
+                button_fill, rule_color, text_color, compact ? "Int." : "Integr.",
                 point_in_rect(mouse_x, mouse_y, &layout.buttons[HUD_BUTTON_INTEGRATOR]));
     draw_button(renderer, g_hud_body_font, &layout.buttons[HUD_BUTTON_RESET_CAMERA],
-                button_fill, rule_color, text_color, "Camera",
+                button_fill, rule_color, text_color, compact ? "Cam" : "Camera",
                 point_in_rect(mouse_x, mouse_y, &layout.buttons[HUD_BUTTON_RESET_CAMERA]));
     draw_button(renderer, g_hud_body_font, &layout.buttons[HUD_BUTTON_RESET_BASELINE],
-                button_fill, rule_color, text_color, "Baseline",
+                button_fill, rule_color, text_color, compact ? "Base" : "Baseline",
                 point_in_rect(mouse_x, mouse_y, &layout.buttons[HUD_BUTTON_RESET_BASELINE]));
 
     draw_text_line(renderer, g_hud_body_font, layout.controls_text_x, layout.controls_hint_y,
-                   muted_color, "Mouse: wheel/QE zoom, drag time slider, middle/WASD pan");
+                   muted_color, compact
+                       ? "Drag space to spawn; tap buttons to control"
+                       : "Mouse: wheel/QE zoom, drag time slider, middle/WASD pan");
     draw_text_line(renderer, g_hud_body_font, layout.controls_text_x,
                    layout.controls_hint_y + body_step,
-                   muted_color, "Keys: Tab type, [ ] mass, 0-4 scenes, H hide HUD");
+                   muted_color, compact
+                       ? "Keys: 0-4 scenes, I method, H hide HUD"
+                       : "Keys: Tab type, [ ] mass, 0-4 scenes, H hide HUD");
 }
 
 bool hud_contains_point(int screen_x, int screen_y, bool hud_visible, const Viewport *viewport) {

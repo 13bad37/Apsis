@@ -8,12 +8,18 @@
 
 <p align="center">
   <img alt="Status active development" src="https://img.shields.io/badge/Status-Active%20Development-1f6feb?style=for-the-badge" />
-  <img alt="Roadmap progress" src="https://img.shields.io/badge/Roadmap-23%2F26%20complete-2ea44f?style=for-the-badge" height="28" />
+  <img alt="Roadmap progress" src="https://img.shields.io/badge/Roadmap-24%2F27%20complete-2ea44f?style=for-the-badge" height="28" />
 </p>
 
 Apsis is a real time 2D gravity simulation written in C with SDL2. It started as a fun curiosity project, but the direction changed pretty quickly. The goal now is to keep the interaction side enjoyable while pushing the simulation itself toward more defensible physics and better numerical behaviour.
 
 The current build already supports physically meaningful units, multiple integrators, preset scenes, interactive spawning, extended collision handling, save/load state handling, CSV benchmark export, camera controls, and live diagnostics for energy, momentum, angular momentum, and drift. It is still actively being built out, but the foundation is in place and the roadmap is clear.
+
+<p align="center">
+  <a href="https://13bad37.github.io/Gravity-Simulation/"><strong>Launch the Live Web Demo</strong></a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#build"><strong>Build the Native Version</strong></a>
+</p>
 
 ## Preview
 
@@ -56,6 +62,7 @@ The current build already supports physically meaningful units, multiple integra
 - Save and load support for reproducible simulation states
 - CSV benchmark export for integrator, energy, momentum, angular momentum, and drift tracking
 - Diagnostics for total energy, total momentum, angular momentum, and relative drift from a resettable baseline
+- Browser-accessible WebAssembly build deployed through GitHub Pages
 
 ## Core Physics Concepts
 
@@ -89,6 +96,21 @@ More informal write-ups live in [Theory notes/Notes.md](Theory%20notes/Notes.md)
 make
 make run
 ```
+
+### Browser Demo
+
+The browser version compiles the same C/SDL2 simulation core to WebAssembly with Emscripten. The hosted demo is available at:
+
+[https://13bad37.github.io/Gravity-Simulation/](https://13bad37.github.io/Gravity-Simulation/)
+
+To build the web version locally from an activated Emscripten SDK environment:
+
+```bash
+make web
+python3 -m http.server 8080 --directory web/dist
+```
+
+Then open `http://localhost:8080`. Browser saves are stored locally in the browser, and stopping benchmark recording downloads a CSV file.
 
 ### Arch Linux
 
@@ -149,6 +171,7 @@ The badge above is generated automatically from this checklist by a GitHub Actio
 - [x] Save and load simulation states
 - [x] Data export and benchmarking tools
 - [x] Collision model extensions beyond simple merging
+- [x] WebAssembly browser demo and GitHub Pages deployment
 
 ### Planned
 

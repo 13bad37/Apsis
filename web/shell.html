@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080d17">
+  <meta name="description" content="Apsis is a real-time 2D N-body gravity simulation built in C and running in the browser through WebAssembly.">
+  <title>Apsis | Live Gravity Simulation</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="./" aria-label="Apsis home">
+      <span class="brand-mark"></span>
+      <span>Apsis</span>
+    </a>
+    <nav class="masthead-links" aria-label="Project links">
+      <span class="runtime-pill" id="runtime-status">Loading simulation</span>
+      <a href="https://github.com/13bad37/Gravity-Simulation" target="_blank" rel="noreferrer">Source code</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <section class="intro" aria-label="About Apsis">
+      <p class="eyebrow">C / SDL2 / WebAssembly</p>
+      <h1>Orbital dynamics,<br>open in a browser.</h1>
+      <p class="summary">A real-time 2D N-body gravity simulator with physical units, integrator comparison, collision outcomes, and live numerical diagnostics.</p>
+      <dl class="facts">
+        <div>
+          <dt>Scenes</dt>
+          <dd>Solar, chaotic, binary, moon system</dd>
+        </div>
+        <div>
+          <dt>Methods</dt>
+          <dd>Euler, Verlet, RK4</dd>
+        </div>
+        <div>
+          <dt>Output</dt>
+          <dd>Saved sessions and benchmark CSV</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="simulation" aria-label="Apsis live simulation">
+      <div class="simulation-head">
+        <div>
+          <p class="eyebrow">Interactive Demo</p>
+          <h2>Live Simulation</h2>
+        </div>
+        <p class="hint">Click the canvas to begin. Use the in-app controls or the keyboard.</p>
+      </div>
+      <div class="canvas-frame">
+        <canvas id="canvas" width="1280" height="720" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+        <div class="loader" id="loader" role="status">
+          <span class="loader-track"><span class="loader-progress" id="loader-progress"></span></span>
+          <span id="loader-label">Preparing WebAssembly build</span>
+        </div>
+        <div class="toast" id="toast" aria-live="polite"></div>
+      </div>
+      <div class="quick-controls" aria-label="Quick controls">
+        <span><kbd>Drag</kbd> launch body</span>
+        <span><kbd>Wheel</kbd> zoom</span>
+        <span><kbd>0-4</kbd> scenes</span>
+        <span><kbd>I</kbd> integrator</span>
+        <span><kbd>F5 / F9</kbd> save / load</span>
+        <span><kbd>F6</kbd> CSV capture</span>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Built in C with SDL2. Browser build powered by WebAssembly.</p>
+    <a href="https://github.com/13bad37/Gravity-Simulation#build" target="_blank" rel="noreferrer">Build the native version</a>
+  </footer>
+
+  <script>
+    const runtimeStatus = document.getElementById("runtime-status");
+    const loader = document.getElementById("loader");
+    const loaderLabel = document.getElementById("loader-label");
+    const loaderProgress = document.getElementById("loader-progress");
+    const toast = document.getElementById("toast");
+    let toastTimer;
+
+    var Module = {
+      canvas: document.getElementById("canvas"),
+      printErr: function(text) {
+        console.error(text);
+      },
+      setStatus: function(text) {
+        if (!text) {
+          runtimeStatus.textContent = "Live";
+          document.body.classList.add("is-ready");
+          loader.setAttribute("aria-hidden", "true");
+          Module.canvas.focus();
+          return;
+        }
+        runtimeStatus.textContent = text;
+        loaderLabel.textContent = text;
+      },
+      monitorRunDependencies: function(left) {
+        const total = Module.totalDependencies || left;
+        Module.totalDependencies = Math.max(Module.totalDependencies || 0, left);
+        const loaded = total ? (total - left) / total : 0;
+        loaderProgress.style.transform = `scaleX(${loaded})`;
+      },
+      apsisNotify: function(message, tone) {
+        window.clearTimeout(toastTimer);
+        toast.textContent = message;
+        toast.dataset.tone = tone || "success";
+        toast.classList.add("is-visible");
+        toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 3200);
+      }
+    };
+    Module.setStatus("Downloading simulation");
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>

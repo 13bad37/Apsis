@@ -10,3 +10,5 @@ apsis_benchmark.csv
 gravity_sim
 gravitysim_save.txt
 gravitysim_benchmark.csv
+web/dist/
+output/playwright/
